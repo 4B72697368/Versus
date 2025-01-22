@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Debate System</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial;
+            height: 100vh;
+            display: flex;
+            height: 100%;
+            overflow-x: hidden;
+            overflow-y: hidden;
+            flex-direction: column;
+            transition: background-color 0.5s ease;
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .start-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .debate-screen {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        .timer-container {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+
+        .timer {
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .debate-content {
+            color: white;
+            margin-top: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            padding-bottom: 8px;
+            overflow-y: auto;
+            max-height: 70vh;
+        }
+
+        .side {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .speech {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .transcript {
+            font-size: 18px;
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-bottom: 10px;
+            margin: 0 auto;
+        }
+
+        .end-screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            background-color: white;
+            color: black;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #333;
+            color: white;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #555;
+        }
+
+        input {
+            padding: 10px;
+            font-size: 18px;
+            width: 300px;
+        }
+
+        .footer {
+            display: flex;
+            justify-content: center;
+            text-align: center;
+            width: 100%;
+            font-size: large;
+            bottom: 0;
+            color: white;
+            padding: 5px;
+        }
+
+        h1, h3 {        
+            margin-block-start: 0em;
+            margin-block-end: 0em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="start-screen" id="startScreen">
+            <h1>AI Debate System</h1>
+            <h3>Don't be afraid to mess with it</h3>
+            <label>Topic:</label>
+            <input type="text" id="topic" value="People Should Walk Backwards Everywhere">
+            <button onclick="startDebate()">Start Debate</button>
+        </div>
+
+        <div class="debate-screen" id="debateScreen">
+            <div class="timer-container">
+                <div class="timer" id="timer">0:00</div>
+            </div>
+            <div class="debate-content">
+                <div class="side" id="side">-</div>
+                <div class="speech" id="round">-</div>
+                <div class="transcript" id="transcript">Loading...</div>
+            </div>
+        </div>
+
+        <div class="end-screen" id="endScreen">
+            <h1>Debate Over</h1>
+            <button onclick="location.reload()">Start New Debate</button>
+        </div>
+    </div>
+
+    <div class="footer" id="footer">
+        <p id="footer-text">Start New Debate</p>
+    </div>
+
+    <script>
+        let currentRound = 0;
+        let startTime;
+        let timerInterval;
+        let currentUtterance;
+        
+        window.addEventListener('beforeunload', function () {
+            if (currentUtterance) {
+                speechSynthesis.cancel();
+            }
+        });
+
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('timer').textContent =
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function updateBackground(side) {
+            document.body.style.backgroundColor = side === 'AFF' ? '#3498db' : '#e74c3c';
+        }
+
+        async function playAudio(text) {
+            try {
+                document.getElementById('footer-text').textContent = "Reading Speech...";
+
+                if (currentUtterance) {
+                    speechSynthesis.cancel();
+                }
+
+                currentUtterance = new SpeechSynthesisUtterance(text);
+                currentUtterance.rate = 1.7;
+                
+                return new Promise((resolve, reject) => {
+                    currentUtterance.onend = function () {
+                        document.getElementById('footer-text').textContent = "Generating Next Speech...";
+                        resolve();
+                    };
+
+                    currentUtterance.onerror = function (e) {
+                        reject('Audio playback error:', e);
+                    };
+
+                    speechSynthesis.speak(currentUtterance);
+                });
+            } catch (error) {
+                console.error('Audio playback error:', error);
+                return Promise.reject(error);
+            }
+        }
+
+        async function startDebate() {
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('debateScreen').style.display = 'flex';
+
+            startTime = Date.now();
+            timerInterval = setInterval(updateTimer, 1000);
+
+            currentRound = 0;
+            await fetch('/api/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            nextRound();
+        }
+
+        async function nextRound() {
+            const topic = document.getElementById('topic').value;
+
+            while (true) {
+                const response = await fetch('/api/next', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        topic: topic,
+                        currentRound: currentRound
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.finished) {
+                    clearInterval(timerInterval);
+                    document.getElementById('debateScreen').style.display = 'none';
+                    document.getElementById('endScreen').style.display = 'flex';
+                    break;
+                }
+
+                document.getElementById('side').textContent = data.side;
+                document.getElementById('round').textContent = data.roundType;
+                document.getElementById('transcript').textContent = data.speech;
+                updateBackground(data.side);
+
+                await playAudio(data.speech);
+
+                currentRound++;
+            }
+        }
+    </script>
+</body>
+
+</html>
